@@ -51,7 +51,6 @@ window.channelLabels = { HF: channelLabelsHF, LF: channelLabelsLF };
 // --- 新增：量程和通道管理 ---
 const channelSelect = document.getElementById('channel-select');
 const rangeSelect = document.getElementById('range-select');
-//
 
 // 存储每个通道的量程设置 (channelId -> rangeString)
 const channelRanges = new Map();
