@@ -4,7 +4,9 @@ const POINTS_PER_CHANNEL = 2600; // 每个通道的点数
 const REFRESH_INTERVAL_MS = 100; // 刷新频率 (100ms = 10Hz)
 const VERTICAL_OFFSET_PER_CHANNEL = 0.8; // 每个通道的垂直偏移量
 
-
+// ========== 通道显隐状态（true=显示，false=隐藏）==========
+const channelVisibleHF = Array(NUM_CHANNELS).fill(false).map((_, i) => i < 3);
+const channelVisibleLF = Array(NUM_CHANNELS).fill(false).map((_, i) => i < 3);
 // 测量开关（true = 允许绘制测量线，false = 禁止）
 let isMeasurementEnabled = false;
 // ECharts 实例
@@ -49,7 +51,7 @@ window.channelLabels = { HF: channelLabelsHF, LF: channelLabelsLF };
 // --- 新增：量程和通道管理 ---
 const channelSelect = document.getElementById('channel-select');
 const rangeSelect = document.getElementById('range-select');
-//
+
 // 存储每个通道的量程设置 (channelId -> rangeString)
 const channelRanges = new Map();
 // 定义量程对应的Y轴总跨度 (rangeString -> { span: number in Volts })
@@ -1031,13 +1033,15 @@ function initCharts() {
     const defaultYMaxHF = getVerticalOffset(NUM_CHANNELS - 1, 'HF') + defaultRangeConfig.span / 2;
     hfOption.yAxis.min = defaultYMinHF;
     hfOption.yAxis.max = defaultYMaxHF;
+    hfOption.legend = { show: false };
+    // 1--
     // 设置高频图的图例数据，并仅默认显示前 3 条通道
-    hfOption.legend.data = hfLegendData; // 设置高频图的图例数据
-    const hfSelectedMap = {};
-    for (let i = 0; i < NUM_CHANNELS; i++) {
-        hfSelectedMap[`HF Channel ${i + 1}`] = i < 3; // 仅前三条默认选中
-    }
-    hfOption.legend.selected = hfSelectedMap;
+    // hfOption.legend.data = hfLegendData; // 设置高频图的图例数据
+    // const hfSelectedMap = {};
+    // for (let i = 0; i < NUM_CHANNELS; i++) {
+    //     hfSelectedMap[`HF Channel ${i + 1}`] = i < 3; // 仅前三条默认选中
+    // }
+    // hfOption.legend.selected = hfSelectedMap;
 
     for (let i = 0; i < NUM_CHANNELS; i++) {
         const initDataHF = generateNewSeriesData(i, 0.05, 1.0, channelStatesHF);
@@ -1048,18 +1052,15 @@ function initCharts() {
             color: channelColorsHF[i],
             showSymbol: false,
             hoverAnimation: false,
-            lineStyle: {
-                width: 1,
-                opacity: 0.8,
-                color: channelColorsHF[i]
-            },
+            lineStyle: { width: 1, opacity: 0.8, color: channelColorsHF[i] },
             itemStyle: { color: channelColorsHF[i] },
-            data: initDataHF,
+            data: channelVisibleHF[i] ? initDataHF.slice() : [], // 根据显隐状态
             large: true,
             largeThreshold: 2000
         });
     }
     chartHF.setOption(hfOption);
+    createCustomLegend(chartHF, 'HF', channelColorsHF, channelLabelsHF);
 
     // 绑定鼠标事件以添加测量线
     chartHF.getDom().addEventListener('mousedown', function (e) {
@@ -1068,34 +1069,40 @@ function initCharts() {
     chartHF.getDom().addEventListener('contextmenu', function (e) { e.preventDefault(); });
     // 创建右侧箭头控件
     createArrowControls(chartHF, 'HF');
-    // 同步箭头的 legendVisible 状态到初始选中状态
-    (function syncHFArrowsInitial() {
-        const sel = hfOption.legend && hfOption.legend.selected ? hfOption.legend.selected : {};
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const el = arrowElemsHF[i];
-            if (el) el.dataset.legendVisible = sel[`HF Channel ${i + 1}`] ? 'true' : 'false';
-        }
-    })();
-    updateArrowPositions(chartHF, 'HF');
-    // 监听图例切换，更新对应箭头的可见性标记并刷新位置
-    chartHF.on && chartHF.on('legendselectchanged', function (params) {
-        console.log('HF legendselectchanged--', params);
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const name = `HF Channel ${i + 1}`;
-            const visible = !!params.selected[name];
-            const el = arrowElemsHF[i];
-            if (el) {
-                el.dataset.legendVisible = visible ? 'true' : 'false';
-            }
-        }
-        // 立即刷新箭头位置以反映可见性变化
-        updateArrowPositions(chartHF, 'HF');
-        // 同步箭头颜色（以防外部修改了 channelColors）
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const el = arrowElemsHF[i];
-            if (el) el.style.background = channelColorsHF[i];
+    arrowElemsHF.forEach((el, idx) => {
+        if (el) {
+            el.dataset.legendVisible = channelVisibleHF[idx] ? 'true' : 'false';
         }
     });
+
+    // 同步箭头的 legendVisible 状态到初始选中状态
+    // (function syncHFArrowsInitial() {
+    //     const sel = hfOption.legend && hfOption.legend.selected ? hfOption.legend.selected : {};
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const el = arrowElemsHF[i];
+    //         if (el) el.dataset.legendVisible = sel[`HF Channel ${i + 1}`] ? 'true' : 'false';
+    //     }
+    // })();
+    updateArrowPositions(chartHF, 'HF');
+    // 监听图例切换，更新对应箭头的可见性标记并刷新位置
+    // chartHF.on && chartHF.on('legendselectchanged', function (params) {
+    //     console.log('HF legendselectchanged--', params);
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const name = `HF Channel ${i + 1}`;
+    //         const visible = !!params.selected[name];
+    //         const el = arrowElemsHF[i];
+    //         if (el) {
+    //             el.dataset.legendVisible = visible ? 'true' : 'false';
+    //         }
+    //     }
+    //     // 立即刷新箭头位置以反映可见性变化
+    //     updateArrowPositions(chartHF, 'HF');
+    //     // 同步箭头颜色（以防外部修改了 channelColors）
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const el = arrowElemsHF[i];
+    //         if (el) el.style.background = channelColorsHF[i];
+    //     }
+    // });
 
     // 低频图配置
     const lfOption = JSON.parse(JSON.stringify(baseOption)); // 深拷贝基础配置
@@ -1120,12 +1127,15 @@ function initCharts() {
     const defaultYMaxLF = getVerticalOffset(NUM_CHANNELS - 1, 'LF') + defaultRangeConfig.span / 2;
     lfOption.yAxis.min = defaultYMinLF;
     lfOption.yAxis.max = defaultYMaxLF;
-    lfOption.legend.data = lfLegendData; // 设置低频图的图例数据
-    const lfSelectedMap = {};
-    for (let i = 0; i < NUM_CHANNELS; i++) {
-        lfSelectedMap[`LF Channel ${i + 1}`] = i < 3;
-    }
-    lfOption.legend.selected = lfSelectedMap;
+
+    lfOption.legend = { show: false };   //
+    //1--
+    // lfOption.legend.data = lfLegendData; // 设置低频图的图例数据
+    // const lfSelectedMap = {};
+    // for (let i = 0; i < NUM_CHANNELS; i++) {
+    //     lfSelectedMap[`LF Channel ${i + 1}`] = i < 3;
+    // }
+    // lfOption.legend.selected = lfSelectedMap;
 
     for (let i = 0; i < NUM_CHANNELS; i++) {
         const initDataLF = generateNewSeriesData(i, 0.01, 0.5, channelStatesLF);
@@ -1142,73 +1152,79 @@ function initCharts() {
                 color: channelColorsLF[i]
             },
             itemStyle: { color: channelColorsLF[i] },
-            data: initDataLF,
+            data: channelVisibleLF[i] ? initDataLF.slice() : [], // ✅
             large: true,
             largeThreshold: 2000
         });
     }
     chartLF.setOption(lfOption);
+    createCustomLegend(chartLF, 'LF', channelColorsLF, channelLabelsLF);
 
     chartLF.getDom().addEventListener('mousedown', function (e) {
         handleChartMouseDown(e, chartLF, dataBuffersLF, measurementLinesLF);
     });
     chartLF.getDom().addEventListener('contextmenu', function (e) { e.preventDefault(); });
     createArrowControls(chartLF, 'LF');
-    (function syncLFArrowsInitial() {
-        const sel = lfOption.legend && lfOption.legend.selected ? lfOption.legend.selected : {};
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const el = arrowElemsLF[i];
-            if (el) el.dataset.legendVisible = sel[`LF Channel ${i + 1}`] ? 'true' : 'false';
-        }
-    })();
-    updateArrowPositions(chartLF, 'LF');
-    chartLF.on && chartLF.on('legendselectchanged', function (params) {
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const name = `LF Channel ${i + 1}`;
-            const visible = !!params.selected[name];
-            const el = arrowElemsLF[i];
-            if (el) {
-                el.dataset.legendVisible = visible ? 'true' : 'false';
-            }
-        }
-        updateArrowPositions(chartLF, 'LF');
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const el = arrowElemsLF[i];
-            if (el) el.style.background = channelColorsLF[i];
+    // (function syncLFArrowsInitial() {
+    //     const sel = lfOption.legend && lfOption.legend.selected ? lfOption.legend.selected : {};
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const el = arrowElemsLF[i];
+    //         if (el) el.dataset.legendVisible = sel[`LF Channel ${i + 1}`] ? 'true' : 'false';
+    //     }
+    // })();
+    arrowElemsLF.forEach((el, idx) => {
+        if (el) {
+            el.dataset.legendVisible = channelVisibleLF[idx] ? 'true' : 'false';
         }
     });
+    updateArrowPositions(chartLF, 'LF');
+    // chartLF.on && chartLF.on('legendselectchanged', function (params) {
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const name = `LF Channel ${i + 1}`;
+    //         const visible = !!params.selected[name];
+    //         const el = arrowElemsLF[i];
+    //         if (el) {
+    //             el.dataset.legendVisible = visible ? 'true' : 'false';
+    //         }
+    //     }
+    //     updateArrowPositions(chartLF, 'LF');
+    //     for (let i = 0; i < NUM_CHANNELS; i++) {
+    //         const el = arrowElemsLF[i];
+    //         if (el) el.style.background = channelColorsLF[i];
+    //     }
+    // });
 
     // 初始应用量程，确保页面加载时Y轴是正确的
     applyRangeToChart();
 }
 
-// 更新图表数据 - 每次生成全新的波形
+// 更新图表数据 - 每次生成全新的波形，并应用显隐状态
 function updateCharts() {
-    // 更新高频图：为每个通道生成全新的波形
+    // 更新高频图数据缓存
     for (let i = 0; i < NUM_CHANNELS; i++) {
-        // 生成全新的数据
         const newData = generateNewSeriesData(i, 0.05, 1.0, channelStatesHF);
-        // 直接替换整个缓冲区
         dataBuffersHF[i] = newData.slice();
     }
 
-    // 更新低频图：为每个通道生成全新的波形
+    // 更新低频图数据缓存
     for (let i = 0; i < NUM_CHANNELS; i++) {
         const newData = generateNewSeriesData(i, 0.01, 0.5, channelStatesLF);
         dataBuffersLF[i] = newData.slice();
     }
 
-    // 更新图表系列数据
+    // 准备高频图 series 更新（根据显隐状态决定是否传空数组）
     const hfSeriesUpdate = dataBuffersHF.map((buf, idx) => ({
         seriesIndex: idx,
-        data: buf
-    }));
-    const lfSeriesUpdate = dataBuffersLF.map((buf, idx) => ({
-        seriesIndex: idx,
-        data: buf
+        data: channelVisibleHF[idx] ? buf.slice() : []
     }));
 
-    // 使用 setOption 更新数据
+    // 准备低频图 series 更新
+    const lfSeriesUpdate = dataBuffersLF.map((buf, idx) => ({
+        seriesIndex: idx,
+        data: channelVisibleLF[idx] ? buf.slice() : []
+    }));
+
+    // 批量更新图表
     if (chartHF) {
         chartHF.setOption({ series: hfSeriesUpdate }, false);
     }
@@ -1221,6 +1237,118 @@ function updateCharts() {
     if (chartLF) updateArrowPositions(chartLF, 'LF');
 }
 
+/**
+ * 自定义 HTML 图例（终极版）
+ * - 点击切换通道显隐状态
+ * - 状态持久化，波形刷新后依然保持
+ * - 完全不依赖 ECharts 原生图例，蓝牙鼠标点击丝滑
+ */
+function createCustomLegend(chart, chartType, colors, labels) {
+    const container = chart.getDom();
+    if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+    }
+
+    const legendClass = `custom-echarts-legend-${chartType}`;
+    const oldLegend = container.querySelector(`.${legendClass}`);
+    if (oldLegend) oldLegend.remove();
+
+    const legendDiv = document.createElement('div');
+    legendDiv.className = `custom-echarts-legend ${legendClass}`;
+    Object.assign(legendDiv.style, {
+        position: 'absolute',
+        top: '10px',
+        left: '80px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '12px',
+        zIndex: '3000',
+        pointerEvents: 'auto',
+        fontSize: '12px',
+        fontFamily: 'sans-serif'
+    });
+
+    // 获取当前图表对应的显隐状态数组
+    const visibleArray = chartType === 'HF' ? channelVisibleHF : channelVisibleLF;
+
+    labels.forEach((label, i) => {
+        const seriesName = `${chartType} Channel ${i + 1}`;
+        const isVisible = visibleArray[i]; // 从状态数组读取
+
+        const item = document.createElement('span');
+        item.dataset.index = i;
+        item.dataset.name = seriesName;
+        Object.assign(item.style, {
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '6px 16px',
+            background: isVisible ? colors[i] : '#aaa',
+            color: '#fff',
+            borderRadius: '20px',
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+            whiteSpace: 'nowrap'
+        });
+
+        const marker = document.createElement('span');
+        Object.assign(marker.style, {
+            display: 'inline-block',
+            width: '12px',
+            height: '12px',
+            background: colors[i],
+            marginRight: '8px',
+            borderRadius: '2px'
+        });
+
+        const text = document.createElement('span');
+        text.textContent = label;
+
+        item.appendChild(marker);
+        item.appendChild(text);
+        legendDiv.appendChild(item);
+
+        // 点击事件：切换状态数组 + 更新图表 + 更新自身背景
+        // 点击事件：切换状态数组 + 更新图表 + 更新自身背景
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            // 1. 切换显隐状态
+            visibleArray[i] = !visibleArray[i];
+            const newVisible = visibleArray[i];
+
+            // 2. 更新当前图例项背景色
+            item.style.background = newVisible ? colors[i] : '#aaa';
+
+            const arrowArray = chartType === 'HF' ? arrowElemsHF : arrowElemsLF;
+            if (arrowArray[i]) {
+                arrowArray[i].dataset.legendVisible = newVisible ? 'true' : 'false';
+            }
+            updateArrowPositions(chart, chartType);
+
+            // 3. 更新图表中对应 series 的数据
+
+            const seriesIndex = i;
+
+            let newData;
+            if (newVisible) {
+                // 显示：从全局数据缓存中恢复完整波形
+                newData = chartType === 'HF' ? dataBuffersHF[i].slice() : dataBuffersLF[i].slice();
+            } else {
+                // 隐藏：设置为空数组
+                newData = [];
+            }
+
+            chart.setOption({
+                series: [{
+                    index: seriesIndex,
+                    data: newData
+                }]
+            }, false);
+        });
+    });
+
+    container.appendChild(legendDiv);
+}
 // 启动图表和更新循环
 initCharts();
 setInterval(updateCharts, REFRESH_INTERVAL_MS);
